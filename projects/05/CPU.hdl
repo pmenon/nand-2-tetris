@@ -39,5 +39,37 @@ CHIP CPU {
         pc[15];          // address of next instruction
 
     PARTS:
-    // Put your code here:
+    // Mux feeding into A register.  Determine whether to load ALU output or A-inst constant
+    Mux16(a[15]=false, a[0..14]=instruction[0..14], b=aluOut, sel=instruction[15], out=muxAOut);
+    Not(in=instruction[15], out=aInst);
+    Or(a=aInst, b=instruction[5], out=loadA);
+    ARegister(in=muxAOut, load=loadA, out=aIn, out[0..14]=addressM);
+
+    // A/M
+    Mux16(a=aIn, b=inM, sel=instruction[12], out=aOrM);
+
+    // D
+    And(a=instruction[4], b=instruction[15], out=loadD);
+    DRegister(in=aluOut, load=loadD, out=dIn);
+
+    // ALU
+    ALU(x=dIn, y=aOrM, 
+        zx=instruction[11], nx=instruction[10], zy=instruction[9], ny=instruction[8], f=instruction[7], no=instruction[6],
+        out=aluOut, out=outM, zr=zr, ng=lt);
+
+    // Write to Memory ?
+    And(a=instruction[3], b=instruction[15], out=writeM);
+
+    // Determine JMP condition, lt := out < 0, zr := out == 0
+    Or(a=lt, b=zr, out=lte);
+    Not(in=lte, out=gt);
+    
+    And(a=instruction[1], b=zr, out=jeq); // if JEQ and out == 0
+    And(a=instruction[2], b=lt, out=jlt); // if JLT and out < 0
+    And(a=instruction[0], b=gt, out=jgt); // if JGT and out > 0       
+    Or(a=jlt, b=jeq, out=jle);
+    Or(a=jle, b=jgt, out=jmp);
+    And(a=instruction[15], b=jmp, out=loadPc); // only load PC if C-inst and other conditions met
+    Not(in=loadPc, out=incPc);
+    PC(in=aIn, load=loadPc, inc=incPc, reset=reset, out[0..14]=pc);
 }
